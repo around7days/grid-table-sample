@@ -2,19 +2,33 @@ $(function() {
 
   /**
    * 初期処理
+   * ・テーブルに識別用の属性を付与
+   * ・テーブルに検索用テキストボックスを追加
    * ・ヘッダに昇順降順の矢印を追加
    * ・ヘッダに列移動の矢印を追加
    * ・ヘッダにドラッグ属性を付与
-   * ・テーブルの上部に検索用テキストボックスを追加
    */
   {
+
+    $("table.grid-table").each(function(i, e) {
+      // テーブルに識別用の属性を付与
+      $(e).attr("data-table-id", i);
+
+      // テーブルに検索用テキストボックスを追加(テーブルとの関連付けも行う)
+      let $div = $("<div style='line-height: 2.0; vertical-align: middle;'>").text("検索：");
+      let $input = $("<input type='text' size='15'>").attr("name", "search").attr("data-table-id", i);
+      let $filter = $div.append($input);
+
+      $filter.insertBefore($(e));
+    });
+
     $("table.grid-table thead th").each(function(i, e) {
       // ヘッダに昇順降順の矢印を追加
-      let $sortLinkAsc = $("<a href='javascript:void(0)' data-sort='asc'>↑</a>");
-      let $sortLinkDesc = $("<a href='javascript:void(0)' data-sort='desc'>↓</a>");
+      let $sortLinkAsc = $("<a href='javascript:void(0)'>").text("↑").attr("data-sort", "asc");
+      let $sortLinkDesc = $("<a href='javascript:void(0)'>").text("↓").attr("data-sort", "desc");
       // ヘッダに列移動の矢印を追加
-      let $colMoveLinkRight = $("<a href='javascript:void(0)' data-col-move='right'>→</a>");
-      let $colMoveLinkLeft = $("<a href='javascript:void(0)' data-col-move='left'>←</a>");
+      let $colMoveLinkRight = $("<a href='javascript:void(0)'>").text("→").attr("data-col-move", "right");
+      let $colMoveLinkLeft = $("<a href='javascript:void(0)'>").text("←").attr("data-col-move", "left");
 
       // 要素の追加
       $(e).append(" ", $colMoveLinkLeft);
@@ -26,9 +40,6 @@ $(function() {
       $(e).attr("draggable", true)
     });
 
-    // テーブルの上部に検索用テキストボックスを追加
-    let $filter = $("<div style='line-height: 2.0; vertical-align: middle;'>フィルタ：<input type='text' id='search' style='width: 15em;' /><div>");
-    $filter.insertBefore($("table.grid-table"));
   }
 
   /**
@@ -43,14 +54,19 @@ $(function() {
   });
 
   /**
-   * フィルタ入力
+   * 検索ボックス入力
    * ・レコードのフィルタ
    */
-  $("#search").keyup(function(e) {
-    let value = $("#search").val();
-    let $trRecords = $("table.grid-table tbody tr");
+  $("input[name='search']").keyup(function(e) {
+    // 対象テーブルの取得
+    let targetId = $(this).attr("data-table-id");
+    let $targetTable = $("table.grid-table[data-table-id=" + targetId + "]");
+
+    // 検索ボックスの値を取得
+    let value = $(this).val();
 
     // レコード単位で判定
+    let $trRecords = $targetTable.find("tbody tr");
     $trRecords.each(function(i, e) {
       if ($(e).text().indexOf(value) == -1) { // ちょっぴり手抜き・・・でも大体のケースはOK
         $(e).hide();
@@ -65,13 +81,13 @@ $(function() {
    * ・行ソート
    */
   $("table.grid-table thead th a[data-sort]").on("click", function() {
-    // 列番号の取得
+    // 対象テーブル、列番号、昇順降順の取得
+    let $targetTable = $(this).parents("table.grid-table");
     let colIndex = $(this).parent().index();
-    // 昇順降順の取得
     let sort = $(this).attr("data-sort");
 
     // 行レコードのソート
-    let $records = $("table.grid-table tbody tr");
+    let $records = $targetTable.find("tbody tr");
     $records.sort(function(a, b) {
       let aVal = $(a).children("td").eq(colIndex).text();
       let bVal = $(b).children("td").eq(colIndex).text();
@@ -91,9 +107,9 @@ $(function() {
    * ・列の移動
    */
   $("table.grid-table thead th a[data-col-move]").on("click", function() {
-    // 列番号の取得
+    // 対象テーブル、列番号、列移動の取得
+    let $targetTable = $(this).parents("table.grid-table");
     let colIndex = $(this).parent().index();
-    // 列移動の取得
     let colMove = $(this).attr("data-col-move");
 
     // 移動元列番号と移動先列番号を生成
@@ -103,7 +119,7 @@ $(function() {
     if (colMove == "left") distColIndex = colIndex - 1;
 
     // 列移動処理
-    fnc_colMove(srcColIndex, distColIndex);
+    fnc_colMove($targetTable, srcColIndex, distColIndex);
   });
 
   /**
@@ -113,7 +129,9 @@ $(function() {
   $("table.grid-table thead th").on("dragstart", function(_e) {
     let e = _e.originalEvent;
 
-    // ドラッグ要素の列番号を格納
+    // ドラッグ要素のテーブルIDと列番号を格納
+    let tableId = $(e.target).parents("table.grid-table").attr("data-table-id");
+    e.dataTransfer.setData("srcTableId", tableId);
     e.dataTransfer.setData("srcColIndex", $(e.target).index());
   });
 
@@ -136,12 +154,16 @@ $(function() {
     e.stopPropagation();
     e.preventDefault();
 
-    // 移動元列番号と移動先列番号を生成
+    // 移動元要素のテーブルと列番号を取得
+    let srcTableId = e.dataTransfer.getData("srcTableId");
+    let $targetTable = $("table.grid-table[data-table-id=" + srcTableId + "]");
     let srcColIndex = e.dataTransfer.getData("srcColIndex");
+
+    // 移動先要素の列番号を取得
     let distColIndex = $(e.currentTarget).index();
 
     // 列移動処理
-    fnc_colMove(srcColIndex, distColIndex);
+    fnc_colMove($targetTable, srcColIndex, distColIndex);
   });
 
   /**
@@ -176,24 +198,25 @@ $(function() {
   /**
    * 列移動処理
    */
-  function fnc_colMove(srcColIndex, distColIndex) {
+  function fnc_colMove($targetTable, srcColIndex, distColIndex) {
 
     // 処理の実行有無を判定
-    let colMax = $("table.grid-table thead th").length;
+    let colMax = $targetTable.find("thead th").length;
     if (distColIndex < 0 || distColIndex > colMax - 1 || srcColIndex == distColIndex) {
       // 列の移動先がマイナス、又は、列数を超えている、又は、値が同じ場合は処理しない
       return;
     }
 
     // ヘッダの移動
-    let $thRecords = $("table.grid-table thead th");
+    let $thRecords = $targetTable.find("thead th");
     if (srcColIndex < distColIndex) {
       $thRecords.eq(distColIndex).after($thRecords.eq(srcColIndex));
     } else {
       $thRecords.eq(distColIndex).before($thRecords.eq(srcColIndex));
     }
+
     // 明細の移動
-    let $trRecords = $("table.grid-table tbody tr");
+    let $trRecords = $targetTable.find("tbody tr");
     $trRecords.each(function(i, e) {
       let $tdRecords = $(e).children("td");
       if (srcColIndex < distColIndex) {
